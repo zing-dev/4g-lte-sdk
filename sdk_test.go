@@ -6,22 +6,28 @@ import (
 )
 
 func TestCall(t *testing.T) {
-	err := lte.OpenModem(8, 115200)
+	client := lte.NewDefault(8)
+	err := client.OpenModem()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = lte.SendSms("this is a test sms", "")
+	err = client.SendSms("哈哈哈", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.CloseModem()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCalls(t *testing.T) {
-	err := lte.OpenModem(8, 115200)
+	client := lte.NewDefault(8)
+	err := client.OpenModem()
 	if err != nil {
 		t.Fatal(err)
 	}
-	lte.SendMoreSms("this is a test sms", "", "", "")
+	client.SendMoreSms("this is a test sms", "", "", "")
 }
 
-//GOARCH=386;CGO_ENABLED=1
+//GOARCH=386

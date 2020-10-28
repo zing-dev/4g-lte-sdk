@@ -11,43 +11,121 @@ import (
 )
 
 const (
-	DllName = "./dll/xxtSmsDll.dll"
+	DefaultDllName  = "./dll/xxtSmsDll.dll"
+	DefaultBaudRate = 115200
 
-	FuncOpenModem = "OpenModem"
-	FuncSendSms   = "SendSms"
+	FuncOpenModem  = "OpenModem"
+	FuncSendSms    = "SendSms"
+	FuncAutoDelMsg = "AutoDelMsg"
+	FuncReadNewSms = "ReadNewSms"
+	FuncReadSms    = "ReadSms"
+	FuncCloseModem = "CloseModem"
+
+	ContentMinLength = 5
+	ContentMaxLength = 256
 )
 
 var (
-	lazy     = syscall.NewLazyDLL(DllName)
-	procOpen = lazy.NewProc(FuncOpenModem)
-	procSend = lazy.NewProc(FuncSendSms)
-
-	ErrIllegalMobileNumber = errors.New("非法的手机号")
+	ErrIllegalMobileNumber  = errors.New("非法的手机号")
+	ErrIllegalContentLength = errors.New("短信内容长度非法")
+	ErrNonsupport           = errors.New("功能不支持")
 )
 
-func OpenModem(com, baudRate int) error {
+type Proc struct {
+	OpenModem  *syscall.LazyProc
+	SendSms    *syscall.LazyProc
+	AutoDelMsg *syscall.LazyProc
+	ReadNewSms *syscall.LazyProc
+	ReadSms    *syscall.LazyProc
+	CloseModem *syscall.LazyProc
+}
+
+type Client struct {
+	Com      int
+	BaudRate int
+	DllName  string
+	LazyDLL  *syscall.LazyDLL
+	Proc     Proc
+}
+
+func NewDefault(com int) *Client {
+	return New(DefaultDllName, com)
+}
+
+func New(name string, com int) *Client {
+	lazy := syscall.NewLazyDLL(name)
+	return &Client{
+		Com:      com,
+		BaudRate: DefaultBaudRate,
+		DllName:  name,
+		LazyDLL:  lazy,
+		Proc: Proc{
+			OpenModem:  lazy.NewProc(FuncOpenModem),
+			SendSms:    lazy.NewProc(FuncSendSms),
+			AutoDelMsg: lazy.NewProc(FuncAutoDelMsg),
+			ReadNewSms: lazy.NewProc(FuncReadNewSms),
+			ReadSms:    lazy.NewProc(FuncReadSms),
+			CloseModem: lazy.NewProc(FuncCloseModem),
+		},
+	}
+}
+
+func (client *Client) OpenModem() error {
 	str, _ := syscall.BytePtrFromString("")
-	ret, _, err := procOpen.Call(uintptr(com), uintptr(baudRate), uintptr(unsafe.Pointer(str)))
+	ret, _, err := client.Proc.OpenModem.Call(uintptr(client.Com), uintptr(client.BaudRate), uintptr(unsafe.Pointer(str)))
 	if ret == 1 {
 		return nil
 	}
 	return err
 }
 
-func SendSms(content, mobile string) error {
+func (client *Client) CloseModem() error {
+	ret, _, err := client.Proc.CloseModem.Call()
+	if ret == 1 {
+		return nil
+	}
+	return err
+}
+
+func (client *Client) send(content, mobile *byte) error {
+	ret, _, err := client.Proc.SendSms.Call(uintptr(8), uintptr(unsafe.Pointer(mobile)), uintptr(unsafe.Pointer(content)))
+	if ret == 1 {
+		return nil
+	}
+	return err
+}
+
+//todo
+func (client *Client) ReadSms() error {
+	return ErrNonsupport
+}
+
+//todo
+func (client *Client) ReadNewSms() error {
+	return ErrNonsupport
+}
+
+//todo
+func (client *Client) AutoDelMsg() error {
+	return ErrNonsupport
+}
+
+func (client *Client) SendSms(content, mobile string) error {
+	if ContentMinLength > len(content) || len(content) > ContentMaxLength {
+		return ErrIllegalContentLength
+	}
 	if !checkMobileNumber(mobile) {
 		return ErrIllegalMobileNumber
 	}
 	m, _ := syscall.BytePtrFromString(mobile)
 	c, _ := syscall.BytePtrFromString(content)
-	ret, _, err := procSend.Call(uintptr(8), uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(c)))
-	if ret == 1 {
-		return nil
-	}
-	return err
+	return client.send(c, m)
 }
 
-func SendMoreSms(content string, mobiles ...string) {
+func (client *Client) SendMoreSms(content string, mobiles ...string) {
+	if ContentMinLength > len(content) || len(content) > ContentMaxLength {
+		log.Println(fmt.Sprintf("Send [ %s ]:[ %s ] ", content, ErrIllegalContentLength))
+	}
 	c, _ := syscall.BytePtrFromString(content)
 	for _, mobile := range mobiles {
 		if !checkMobileNumber(mobile) {
@@ -55,8 +133,8 @@ func SendMoreSms(content string, mobiles ...string) {
 			continue
 		}
 		m, _ := syscall.BytePtrFromString(mobile)
-		ret, _, err := procSend.Call(uintptr(8), uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(c)))
-		if ret != 1 {
+		err := client.send(c, m)
+		if err != nil {
 			log.Println(fmt.Sprintf("Send [ %s ]:[ %s ] ", mobile, err))
 		}
 		time.Sleep(time.Second * 3)
