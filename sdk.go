@@ -88,7 +88,7 @@ func (client *Client) CloseModem() error {
 }
 
 func (client *Client) send(content, mobile *byte) error {
-	ret, _, err := client.Proc.SendSms.Call(uintptr(8), uintptr(unsafe.Pointer(mobile)), uintptr(unsafe.Pointer(content)))
+	ret, _, err := client.Proc.SendSms.Call(uintptr(4), uintptr(unsafe.Pointer(mobile)), uintptr(unsafe.Pointer(content)))
 	if ret == 1 {
 		return nil
 	}
